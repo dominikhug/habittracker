@@ -14,7 +14,8 @@ export const config = {
   sessionCookieKey: requireEnv('SESSION_COOKIE_KEY'),
   oauthTxnCookieKey: requireEnv('OAUTH_TXN_COOKIE_KEY'),
   isProd: process.env.NODE_ENV === 'production',
-  // Overridable so tests can point this at a local mock server instead of the real
-  // Microsoft Graph API.
+  // Overridable so tests can point these at a local mock server instead of the real
+  // Microsoft Graph API / identity platform.
   graphBaseUrl: (process.env.GRAPH_BASE_URL || 'https://graph.microsoft.com/v1.0').replace(/\/$/, ''),
+  msIdentityBaseUrl: (process.env.MS_IDENTITY_BASE_URL || 'https://login.microsoftonline.com').replace(/\/$/, ''),
 };

@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { authRoutes } from './auth/routes.js';
+import { habitsRoutes } from './habits/routes.js';
 import { registerSession } from './plugins/session.js';
 
 export async function buildApp() {
@@ -7,6 +8,7 @@ export async function buildApp() {
 
   await registerSession(app);
   await app.register(authRoutes);
+  await app.register(habitsRoutes);
 
   app.get('/healthz', async () => {
     return { status: 'ok' };

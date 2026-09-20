@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import { config } from '../config.js';
 
-const AUTHORIZE_URL = `https://login.microsoftonline.com/${config.azureTenant}/oauth2/v2.0/authorize`;
-const TOKEN_URL = `https://login.microsoftonline.com/${config.azureTenant}/oauth2/v2.0/token`;
+const AUTHORIZE_URL = `${config.msIdentityBaseUrl}/${config.azureTenant}/oauth2/v2.0/authorize`;
+const TOKEN_URL = `${config.msIdentityBaseUrl}/${config.azureTenant}/oauth2/v2.0/token`;
 const SCOPE = 'openid profile offline_access Files.ReadWrite.AppFolder';
 
 export function generatePkce() {
