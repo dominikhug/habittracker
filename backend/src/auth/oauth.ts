@@ -30,14 +30,28 @@ export function buildAuthorizeUrl(state: string, codeChallenge: string): string 
   return `${AUTHORIZE_URL}?${params.toString()}`;
 }
 
-interface TokenResponse {
+interface CodeExchangeResponse {
   access_token: string;
-  refresh_token: string;
+  refresh_token?: string;
   id_token: string;
   expires_in: number;
 }
 
-export async function exchangeCodeForTokens(code: string, codeVerifier: string): Promise<TokenResponse> {
+interface RefreshResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
+}
+
+async function postToTokenEndpoint(body: URLSearchParams): Promise<Response> {
+  return fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+}
+
+export async function exchangeCodeForTokens(code: string, codeVerifier: string): Promise<CodeExchangeResponse> {
   const body = new URLSearchParams({
     client_id: config.azureClientId,
     client_secret: config.azureClientSecret,
@@ -46,15 +60,44 @@ export async function exchangeCodeForTokens(code: string, codeVerifier: string):
     redirect_uri: config.azureRedirectUri,
     code_verifier: codeVerifier,
   });
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  });
+  const res = await postToTokenEndpoint(body);
   if (!res.ok) {
     throw new Error(`Token exchange failed: ${res.status} ${await res.text()}`);
   }
-  return res.json() as Promise<TokenResponse>;
+  return res.json() as Promise<CodeExchangeResponse>;
+}
+
+export class TokenRefreshError extends Error {
+  // errorCode is AAD's machine-readable `error` field (e.g. "invalid_grant",
+  // "invalid_client", "invalid_scope") — callers must check THIS, not just `status`,
+  // before deciding a refresh token is actually dead: AAD returns 400 for many
+  // unrelated problems (bad client secret, misconfigured scope) too.
+  constructor(public status: number, public errorCode: string | undefined, message: string) {
+    super(message);
+    this.name = 'TokenRefreshError';
+  }
+}
+
+export async function refreshTokens(refreshToken: string): Promise<RefreshResponse> {
+  const body = new URLSearchParams({
+    client_id: config.azureClientId,
+    client_secret: config.azureClientSecret,
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    scope: SCOPE,
+  });
+  const res = await postToTokenEndpoint(body);
+  if (!res.ok) {
+    const text = await res.text();
+    let errorCode: string | undefined;
+    try {
+      errorCode = JSON.parse(text).error;
+    } catch {
+      // Non-JSON error body — leave errorCode undefined, message still carries the text.
+    }
+    throw new TokenRefreshError(res.status, errorCode, `Token refresh failed: ${res.status} ${text}`);
+  }
+  return res.json() as Promise<RefreshResponse>;
 }
 
 // Signature/issuer/expiry are intentionally not verified here: this function only ever
