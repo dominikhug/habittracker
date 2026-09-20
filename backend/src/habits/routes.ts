@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../auth/requireAuth.js';
 import { loadData, PreconditionFailedError, withData } from '../graph/appFolderStore.js';
-import { isValidIsoDate, todayIso } from '../util/dates.js';
+import { isTooFarInFuture, isValidIsoDate, todayIso } from '../util/dates.js';
 import { NotFoundError, ValidationError } from './errors.js';
-import { addHabit, deleteHabit, updateHabit } from './model.js';
+import { addHabit, deleteHabit, getDayView, setEntryDone, updateHabit } from './model.js';
 
 function mapWriteError(err: unknown): { status: number; body: { error: string } } | null {
   if (err instanceof ValidationError) {
@@ -74,6 +74,61 @@ export async function habitsRoutes(app: FastifyInstance) {
         return { data: result.data, result: undefined };
       });
       return reply.code(204).send();
+    } catch (err) {
+      const mapped = mapWriteError(err);
+      if (mapped) return reply.code(mapped.status).send(mapped.body);
+      throw err;
+    }
+  });
+
+  app.get<{ Querystring: { date?: string } }>('/api/day', async (request, reply) => {
+    const { date } = request.query;
+    if (date && !isValidIsoDate(date)) {
+      return reply.code(400).send({ error: 'invalid date' });
+    }
+    const effectiveDate = date ?? todayIso();
+    if (isTooFarInFuture(effectiveDate)) {
+      return reply.code(400).send({ error: 'date must not be in the future' });
+    }
+    const { data } = await loadData(request.graphAccessToken);
+    return { date: effectiveDate, habits: getDayView(data, effectiveDate) };
+  });
+
+  app.put<{ Querystring: { habitId?: string; date?: string } }>('/api/entries', async (request, reply) => {
+    const { habitId, date } = request.query;
+    if (!habitId || !date || !isValidIsoDate(date)) {
+      return reply.code(400).send({ error: 'habitId and a valid date are required' });
+    }
+    if (isTooFarInFuture(date)) {
+      return reply.code(400).send({ error: 'date must not be in the future' });
+    }
+    try {
+      await withData(request.graphAccessToken, (data) => {
+        const result = setEntryDone(data, habitId, date, true);
+        return { data: result.data, result: undefined };
+      });
+      return { habitId, date, done: true };
+    } catch (err) {
+      const mapped = mapWriteError(err);
+      if (mapped) return reply.code(mapped.status).send(mapped.body);
+      throw err;
+    }
+  });
+
+  app.delete<{ Querystring: { habitId?: string; date?: string } }>('/api/entries', async (request, reply) => {
+    const { habitId, date } = request.query;
+    if (!habitId || !date || !isValidIsoDate(date)) {
+      return reply.code(400).send({ error: 'habitId and a valid date are required' });
+    }
+    if (isTooFarInFuture(date)) {
+      return reply.code(400).send({ error: 'date must not be in the future' });
+    }
+    try {
+      await withData(request.graphAccessToken, (data) => {
+        const result = setEntryDone(data, habitId, date, false);
+        return { data: result.data, result: undefined };
+      });
+      return { habitId, date, done: false };
     } catch (err) {
       const mapped = mapWriteError(err);
       if (mapped) return reply.code(mapped.status).send(mapped.body);
