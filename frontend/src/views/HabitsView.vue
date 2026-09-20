@@ -169,8 +169,8 @@ h1 {
 }
 
 .delete-btn {
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   color: #b7ada0;
   display: flex;
   align-items: center;
@@ -228,8 +228,8 @@ h1 {
 }
 
 .swatch {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 3px solid transparent;
   cursor: pointer;
