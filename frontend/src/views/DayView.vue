@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import BottomNav from '../components/BottomNav.vue';
 import HabitToggleButton from '../components/HabitToggleButton.vue';
 import { ApiError, useApi } from '../composables/useApi';
+import { localToday } from '../dateUtils';
 
 interface DayHabit {
   habitId: string;
@@ -12,10 +13,6 @@ interface DayHabit {
 }
 
 const api = useApi();
-
-function localToday(): string {
-  return new Date().toLocaleDateString('en-CA');
-}
 
 const date = ref(localToday());
 const habits = ref<DayHabit[]>([]);

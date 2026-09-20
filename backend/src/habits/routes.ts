@@ -3,7 +3,7 @@ import { requireAuth } from '../auth/requireAuth.js';
 import { loadData, PreconditionFailedError, withData } from '../graph/appFolderStore.js';
 import { isTooFarInFuture, isValidIsoDate, todayIso } from '../util/dates.js';
 import { NotFoundError, ValidationError } from './errors.js';
-import { addHabit, deleteHabit, getDayView, setEntryDone, updateHabit } from './model.js';
+import { addHabit, computeWeek, deleteHabit, getDayView, setEntryDone, updateHabit } from './model.js';
 
 function mapWriteError(err: unknown): { status: number; body: { error: string } } | null {
   if (err instanceof ValidationError) {
@@ -34,8 +34,11 @@ export async function habitsRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'name and colorId are required' });
       }
       // Prefer the client's local "today" (matters for correct day-filtering later, see
-      // /api/day and /api/weekly) — fall back to server UTC only if the client omitted it.
-      const effectiveCreatedAt = createdAt && isValidIsoDate(createdAt) ? createdAt : todayIso();
+      // /api/day and /api/weekly) — fall back to server UTC if the client omitted it or
+      // sent something invalid/implausible (e.g. clock-skewed into the future), since a
+      // createdAt beyond the query window would make the habit vanish from /api/weekly.
+      const effectiveCreatedAt =
+        createdAt && isValidIsoDate(createdAt) && !isTooFarInFuture(createdAt) ? createdAt : todayIso();
       try {
         const habit = await withData(request.graphAccessToken, (data) => {
           const result = addHabit(data, name, colorId, effectiveCreatedAt);
@@ -134,5 +137,18 @@ export async function habitsRoutes(app: FastifyInstance) {
       if (mapped) return reply.code(mapped.status).send(mapped.body);
       throw err;
     }
+  });
+
+  app.get<{ Querystring: { date?: string } }>('/api/weekly', async (request, reply) => {
+    const { date } = request.query;
+    if (date && !isValidIsoDate(date)) {
+      return reply.code(400).send({ error: 'invalid date' });
+    }
+    const effectiveDate = date ?? todayIso();
+    if (isTooFarInFuture(effectiveDate)) {
+      return reply.code(400).send({ error: 'date must not be in the future' });
+    }
+    const { data } = await loadData(request.graphAccessToken);
+    return computeWeek(data, effectiveDate);
   });
 }

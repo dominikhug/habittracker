@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { localToday } from '../dateUtils';
 import type { Habit } from '../types';
 import { ApiError, useApi } from './useApi';
 
@@ -7,12 +8,6 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 
 const api = useApi();
-
-// Local calendar date, not UTC — matters for createdAt so a habit isn't mis-dated
-// relative to the user's own "today" near midnight (see backend's todayIso() fallback).
-function localToday(): string {
-  return new Date().toLocaleDateString('en-CA');
-}
 
 // Shared by every mutating action: on session expiry redirect to /login, otherwise
 // surface the message via error.value so the view can show it.
