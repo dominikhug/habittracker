@@ -18,4 +18,9 @@ export const config = {
   // Microsoft Graph API / identity platform.
   graphBaseUrl: (process.env.GRAPH_BASE_URL || 'https://graph.microsoft.com/v1.0').replace(/\/$/, ''),
   msIdentityBaseUrl: (process.env.MS_IDENTITY_BASE_URL || 'https://login.microsoftonline.com').replace(/\/$/, ''),
+  // In production (M7) the backend serves the built SPA itself, so a relative "/"
+  // redirect after login is correct. In local dev the SPA runs on Vite's own port
+  // (5173) instead — set FRONTEND_URL there so the post-login redirect lands on it
+  // instead of 404ing against the backend's own (API-only) routes.
+  frontendUrl: (process.env.FRONTEND_URL || '').replace(/\/$/, ''),
 };

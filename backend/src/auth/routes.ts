@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { config } from '../config.js';
 import { buildAuthorizeUrl, decodeIdToken, exchangeCodeForTokens, generatePkce, generateState } from './oauth.js';
 
 export async function authRoutes(app: FastifyInstance) {
@@ -38,7 +39,7 @@ export async function authRoutes(app: FastifyInstance) {
       request.session.set('rt', tokens.refresh_token);
       request.oauthTxn.delete();
 
-      return reply.redirect('/');
+      return reply.redirect(config.frontendUrl ? `${config.frontendUrl}/` : '/');
     }
   );
 
