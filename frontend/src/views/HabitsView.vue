@@ -2,9 +2,11 @@
 import { onMounted, ref } from 'vue';
 import BottomNav from '../components/BottomNav.vue';
 import { COLOR_CATALOG, swatchColorFor } from '../colors';
+import { useAuth } from '../composables/useAuth';
 import { useHabits } from '../composables/useHabits';
 
 const { habits, loading, error, fetchHabits, addHabit, deleteHabit } = useHabits();
+const { me, logout } = useAuth();
 
 const newName = ref('');
 const newColorId = ref(COLOR_CATALOG[0].id);
@@ -96,6 +98,11 @@ function cancelDelete() {
         Neue Gewohnheit
       </button>
     </form>
+
+    <div class="account">
+      <span v-if="me" class="account-name">Angemeldet als {{ me.name }}</span>
+      <button type="button" class="logout-btn" @click="logout">Abmelden</button>
+    </div>
   </div>
   <BottomNav active="habits" />
 </template>
@@ -253,5 +260,31 @@ h1 {
 .submit-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.account {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid #e6e1d6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-name {
+  font-size: 13px;
+  color: #837d72;
+}
+
+.logout-btn {
+  border: none;
+  background: transparent;
+  color: #a13d3d;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
 }
 </style>
