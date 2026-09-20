@@ -60,8 +60,21 @@ export async function saveData(accessToken: string, data: DataFile, ifMatchEtag?
     throw new Error(`Graph save failed: ${res.status} ${await res.text()}`);
   }
 
-  const etag = await getEtag(res);
-  return { data, etag };
+  // PUT .../content responds with the updated DriveItem as JSON (unlike GET
+  // .../content, whose body is the raw file bytes) — confirmed against real OneDrive,
+  // the ETag response header is NOT reliably present on this endpoint, but the
+  // DriveItem body's own eTag/cTag field is. Header first (cheap, and what our test
+  // mocks set), body as the real-world fallback.
+  const headerEtag = res.headers.get('etag');
+  if (headerEtag) {
+    return { data, etag: headerEtag };
+  }
+  const body = (await res.json()) as { eTag?: string; cTag?: string };
+  const bodyEtag = body.eTag ?? body.cTag;
+  if (!bodyEtag) {
+    throw new Error('Graph save response included no ETag (neither header nor eTag/cTag field)');
+  }
+  return { data, etag: bodyEtag };
 }
 
 const MAX_ATTEMPTS = 3;
