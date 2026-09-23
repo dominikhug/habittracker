@@ -45,11 +45,11 @@ async function addHabit(name: string, colorId: string): Promise<boolean> {
   }
 }
 
-// Renames a habit and updates it in `habits`. Returns whether it succeeded.
-async function renameHabit(id: string, name: string): Promise<boolean> {
+// Renames and/or recolors a habit and updates it in `habits`. Returns whether it succeeded.
+async function updateHabit(id: string, changes: { name?: string; colorId?: string }): Promise<boolean> {
   error.value = null;
   try {
-    const updated = await api.patch<Habit>(`/api/habits/${id}`, { name });
+    const updated = await api.patch<Habit>(`/api/habits/${id}`, changes);
     habits.value = habits.value.map((h) => (h.id === id ? updated : h));
     return true;
   } catch (e) {
@@ -73,5 +73,5 @@ async function deleteHabit(id: string): Promise<boolean> {
 
 // Shared (module-level) habits list plus CRUD actions against the backend.
 export function useHabits() {
-  return { habits, loading, error, fetchHabits, addHabit, renameHabit, deleteHabit };
+  return { habits, loading, error, fetchHabits, addHabit, updateHabit, deleteHabit };
 }

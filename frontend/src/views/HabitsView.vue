@@ -4,14 +4,20 @@ import BottomNav from '../components/BottomNav.vue';
 import { COLOR_CATALOG, swatchColorFor } from '../colors';
 import { useAuth } from '../composables/useAuth';
 import { useHabits } from '../composables/useHabits';
+import type { Habit } from '../types';
 
-const { habits, loading, error, fetchHabits, addHabit, deleteHabit } = useHabits();
+const { habits, loading, error, fetchHabits, addHabit, updateHabit, deleteHabit } = useHabits();
 const { me, logout } = useAuth();
 
 const newName = ref('');
 const newColorId = ref(COLOR_CATALOG[0].id);
 const submitting = ref(false);
 const confirmingDeleteId = ref<string | null>(null);
+
+const editingId = ref<string | null>(null);
+const editName = ref('');
+const editColorId = ref(COLOR_CATALOG[0].id);
+const savingEdit = ref(false);
 
 onMounted(fetchHabits);
 
@@ -30,6 +36,7 @@ async function handleAdd() {
 }
 
 function requestDelete(id: string) {
+  editingId.value = null;
   confirmingDeleteId.value = id;
 }
 
@@ -43,6 +50,31 @@ async function confirmDelete(id: string) {
 function cancelDelete() {
   confirmingDeleteId.value = null;
 }
+
+function startEdit(habit: Habit) {
+  confirmingDeleteId.value = null;
+  editingId.value = habit.id;
+  editName.value = habit.name;
+  editColorId.value = habit.colorId;
+}
+
+async function saveEdit(id: string) {
+  const name = editName.value.trim();
+  if (!name) return;
+  savingEdit.value = true;
+  try {
+    const ok = await updateHabit(id, { name, colorId: editColorId.value });
+    if (ok) {
+      editingId.value = null;
+    }
+  } finally {
+    savingEdit.value = false;
+  }
+}
+
+function cancelEdit() {
+  editingId.value = null;
+}
 </script>
 
 <template>
@@ -53,20 +85,60 @@ function cancelDelete() {
     <p v-if="error" class="error">{{ error }}</p>
 
     <ul class="habit-list">
-      <li v-for="habit in habits" :key="habit.id" class="habit-row">
-        <span class="dot" :style="{ background: swatchColorFor(habit.colorId) }"></span>
-        <span class="name">{{ habit.name }}</span>
-        <template v-if="confirmingDeleteId === habit.id">
-          <button type="button" class="confirm-btn" @click="confirmDelete(habit.id)">Löschen?</button>
-          <button type="button" class="cancel-btn" @click="cancelDelete">Abbrechen</button>
+      <li v-for="habit in habits" :key="habit.id" class="habit-row" :class="{ editing: editingId === habit.id }">
+        <template v-if="editingId === habit.id">
+          <input
+            v-model="editName"
+            type="text"
+            class="edit-name-input"
+            maxlength="100"
+            :aria-label="`Name für ${habit.name}`"
+          />
+          <div class="edit-actions">
+            <div class="swatches small">
+              <button
+                v-for="color in COLOR_CATALOG"
+                :key="color.id"
+                type="button"
+                class="swatch small"
+                :aria-pressed="editColorId === color.id"
+                :aria-label="color.label"
+                :class="{ selected: editColorId === color.id }"
+                :style="{ background: swatchColorFor(color.id) }"
+                @click="editColorId = color.id"
+              />
+            </div>
+            <div class="edit-buttons">
+              <button type="button" class="confirm-btn" :disabled="savingEdit || !editName.trim()" @click="saveEdit(habit.id)">
+                Speichern
+              </button>
+              <button type="button" class="cancel-btn" @click="cancelEdit">Abbrechen</button>
+            </div>
+          </div>
         </template>
-        <button v-else type="button" class="delete-btn" aria-label="Gewohnheit löschen" @click="requestDelete(habit.id)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="4 7 20 7" />
-            <path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
-            <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
-          </svg>
-        </button>
+        <template v-else>
+          <span class="dot" :style="{ background: swatchColorFor(habit.colorId) }"></span>
+          <span class="name">{{ habit.name }}</span>
+          <template v-if="confirmingDeleteId === habit.id">
+            <button type="button" class="confirm-btn" @click="confirmDelete(habit.id)">Löschen?</button>
+            <button type="button" class="cancel-btn" @click="cancelDelete">Abbrechen</button>
+          </template>
+          <template v-else>
+            <button type="button" class="edit-btn" aria-label="Gewohnheit bearbeiten" @click="startEdit(habit)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </button>
+            <button type="button" class="delete-btn" aria-label="Gewohnheit löschen" @click="requestDelete(habit.id)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="4 7 20 7" />
+                <path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" />
+                <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+              </svg>
+            </button>
+          </template>
+        </template>
       </li>
       <li v-if="!loading && habits.length === 0" class="empty">Noch keine Gewohnheiten angelegt.</li>
     </ul>
@@ -140,6 +212,7 @@ h1 {
 
 .habit-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 14px 0;
@@ -160,6 +233,7 @@ h1 {
 }
 
 .delete-btn,
+.edit-btn,
 .confirm-btn,
 .cancel-btn {
   border: none;
@@ -168,13 +242,42 @@ h1 {
   font-family: inherit;
 }
 
-.delete-btn {
+.delete-btn,
+.edit-btn {
   width: 44px;
   height: 44px;
   color: #b7ada0;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+}
+
+.edit-name-input {
+  flex-grow: 1;
+  min-width: 120px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid #e0dacb;
+  font-size: 14px;
+  background: #fbfaf7;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.edit-actions {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.edit-buttons {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
 }
 
 .confirm-btn {
@@ -238,6 +341,16 @@ h1 {
 
 .swatch.selected {
   border-color: #2e2b26;
+}
+
+.swatches.small {
+  gap: 6px;
+}
+
+.swatch.small {
+  width: 26px;
+  height: 26px;
+  border-width: 2px;
 }
 
 .submit-btn {
