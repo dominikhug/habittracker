@@ -1,3 +1,5 @@
+// Server's current UTC date as YYYY-MM-DD. Prefer the client's local date where available
+// (see isTooFarInFuture) — this is only the fallback.
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -14,6 +16,7 @@ export function isValidIsoDate(value: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
+// Adds (or subtracts, for negative days) whole days to an ISO date, returned as YYYY-MM-DD.
 export function addDaysIso(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);

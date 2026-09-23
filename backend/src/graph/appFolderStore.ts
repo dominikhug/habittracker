@@ -10,8 +10,8 @@ interface LoadedData {
   etag: string;
 }
 
-async function getEtag(res: Response): Promise<string> {
-  const etag = res.headers.get('etag');
+async function getEtag(response: Response): Promise<string> {
+  const etag = response.headers.get('etag');
   if (!etag) {
     throw new Error('Graph response did not include an ETag header');
   }
@@ -19,22 +19,22 @@ async function getEtag(res: Response): Promise<string> {
 }
 
 export async function loadData(accessToken: string): Promise<LoadedData> {
-  const res = await fetch(`${config.graphBaseUrl}${DATA_PATH}`, {
+  const response = await fetch(`${config.graphBaseUrl}${DATA_PATH}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  if (res.status === 404) {
+  if (response.status === 404) {
     // First login: the app folder itself is auto-created by Graph on first access,
     // but our data file inside it isn't there yet — create it now.
     return saveData(accessToken, emptyDataFile());
   }
 
-  if (!res.ok) {
-    throw new Error(`Graph load failed: ${res.status} ${await res.text()}`);
+  if (!response.ok) {
+    throw new Error(`Graph load failed: ${response.status} ${await response.text()}`);
   }
 
-  const etag = await getEtag(res);
-  const data = (await res.json()) as DataFile;
+  const etag = await getEtag(response);
+  const data = (await response.json()) as DataFile;
   return { data, etag };
 }
 
@@ -47,17 +47,17 @@ export async function saveData(accessToken: string, data: DataFile, ifMatchEtag?
     headers['If-Match'] = ifMatchEtag;
   }
 
-  const res = await fetch(`${config.graphBaseUrl}${DATA_PATH}`, {
+  const response = await fetch(`${config.graphBaseUrl}${DATA_PATH}`, {
     method: 'PUT',
     headers,
     body: JSON.stringify(data),
   });
 
-  if (res.status === 412) {
+  if (response.status === 412) {
     throw new PreconditionFailedError('ETag mismatch — data was changed elsewhere');
   }
-  if (!res.ok) {
-    throw new Error(`Graph save failed: ${res.status} ${await res.text()}`);
+  if (!response.ok) {
+    throw new Error(`Graph save failed: ${response.status} ${await response.text()}`);
   }
 
   // PUT .../content responds with the updated DriveItem as JSON (unlike GET
@@ -65,11 +65,11 @@ export async function saveData(accessToken: string, data: DataFile, ifMatchEtag?
   // the ETag response header is NOT reliably present on this endpoint, but the
   // DriveItem body's own eTag/cTag field is. Header first (cheap, and what our test
   // mocks set), body as the real-world fallback.
-  const headerEtag = res.headers.get('etag');
+  const headerEtag = response.headers.get('etag');
   if (headerEtag) {
     return { data, etag: headerEtag };
   }
-  const body = (await res.json()) as { eTag?: string; cTag?: string };
+  const body = (await response.json()) as { eTag?: string; cTag?: string };
   const bodyEtag = body.eTag ?? body.cTag;
   if (!bodyEtag) {
     throw new Error('Graph save response included no ETag (neither header nor eTag/cTag field)');

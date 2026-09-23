@@ -15,6 +15,7 @@ export const COLOR_IDS = [
 
 export type ColorId = (typeof COLOR_IDS)[number];
 
+// Checks whether a string is one of the known catalog color ids.
 export function isValidColorId(id: string): id is ColorId {
   return (COLOR_IDS as readonly string[]).includes(id);
 }

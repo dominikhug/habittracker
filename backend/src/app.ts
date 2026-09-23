@@ -7,6 +7,8 @@ import { habitsRoutes } from './habits/routes.js';
 import { registerSession } from './plugins/session.js';
 import { config } from './config.js';
 
+// Assembles the Fastify app: session handling, auth/habits routes, health check, and
+// (in production) static serving of the built SPA.
 export async function buildApp() {
   const app = Fastify({ logger: true });
 

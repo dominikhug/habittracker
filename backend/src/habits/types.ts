@@ -16,6 +16,7 @@ export interface DataFile {
   entries: Entry[];
 }
 
+// The initial data file for a user with no habits yet.
 export function emptyDataFile(): DataFile {
   return { version: 1, habits: [], entries: [] };
 }

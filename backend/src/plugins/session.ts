@@ -2,6 +2,8 @@ import secureSession from '@fastify/secure-session';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 
+// Registers the two secure-session cookies: the long-lived login session and the
+// short-lived transient cookie used to carry OAuth state/PKCE across the redirect.
 export async function registerSession(app: FastifyInstance) {
   await app.register(secureSession, [
     {

@@ -52,6 +52,7 @@ function validateColorId(colorId: string): string {
   return colorId;
 }
 
+// Adds a new habit, validating its name and colorId.
 export function addHabit(
   data: DataFile,
   name: string,
@@ -67,6 +68,7 @@ export function addHabit(
   return { data: { ...data, habits: [...data.habits, habit] }, habit };
 }
 
+// Applies partial changes (name and/or colorId) to an existing habit.
 export function updateHabit(
   data: DataFile,
   id: string,
@@ -89,6 +91,7 @@ export function updateHabit(
   return { data: { ...data, habits }, habit: updated };
 }
 
+// Removes a habit and all of its entries.
 export function deleteHabit(data: DataFile, id: string): { data: DataFile } {
   if (!data.habits.some((h) => h.id === id)) {
     throw new NotFoundError(`habit not found: ${id}`);

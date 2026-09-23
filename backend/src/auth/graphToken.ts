@@ -1,6 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import { refreshTokens, TokenRefreshError } from './oauth.js';
 
+// No valid session/refresh token — caller should respond with HTTP 401.
 export class UnauthenticatedError extends Error {}
 
 // Mints a fresh Microsoft Graph access token from the refresh token stored in the

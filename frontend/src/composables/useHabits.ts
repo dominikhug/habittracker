@@ -19,6 +19,7 @@ function handleError(e: unknown) {
   error.value = (e as Error).message;
 }
 
+// Loads all habits for the current user into `habits`.
 async function fetchHabits() {
   loading.value = true;
   error.value = null;
@@ -31,6 +32,7 @@ async function fetchHabits() {
   }
 }
 
+// Creates a habit and appends it to `habits`. Returns whether it succeeded.
 async function addHabit(name: string, colorId: string): Promise<boolean> {
   error.value = null;
   try {
@@ -43,6 +45,7 @@ async function addHabit(name: string, colorId: string): Promise<boolean> {
   }
 }
 
+// Renames a habit and updates it in `habits`. Returns whether it succeeded.
 async function renameHabit(id: string, name: string): Promise<boolean> {
   error.value = null;
   try {
@@ -55,6 +58,7 @@ async function renameHabit(id: string, name: string): Promise<boolean> {
   }
 }
 
+// Deletes a habit and removes it from `habits`. Returns whether it succeeded.
 async function deleteHabit(id: string): Promise<boolean> {
   error.value = null;
   try {
@@ -67,6 +71,7 @@ async function deleteHabit(id: string): Promise<boolean> {
   }
 }
 
+// Shared (module-level) habits list plus CRUD actions against the backend.
 export function useHabits() {
   return { habits, loading, error, fetchHabits, addHabit, renameHabit, deleteHabit };
 }

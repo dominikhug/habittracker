@@ -18,14 +18,18 @@ function mapWriteError(err: unknown): { status: number; body: { error: string } 
   return null;
 }
 
+// Registers all habit/entry CRUD endpoints. Every route requires an authenticated session
+// (see requireAuth) and reads/writes the user's OneDrive-backed data file.
 export async function habitsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
 
+  // Lists all habits for the current user.
   app.get('/api/habits', async (request) => {
     const { data } = await loadData(request.graphAccessToken);
     return data.habits;
   });
 
+  // Creates a new habit.
   app.post<{ Body: { name?: string; colorId?: string; createdAt?: string } }>(
     '/api/habits',
     async (request, reply) => {
@@ -53,6 +57,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     }
   );
 
+  // Renames a habit and/or changes its color.
   app.patch<{ Params: { id: string }; Body: { name?: string; colorId?: string } }>(
     '/api/habits/:id',
     async (request, reply) => {
@@ -70,6 +75,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     }
   );
 
+  // Deletes a habit and all of its entries.
   app.delete<{ Params: { id: string } }>('/api/habits/:id', async (request, reply) => {
     try {
       await withData(request.graphAccessToken, (data) => {
@@ -84,6 +90,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     }
   });
 
+  // Returns each habit's done/not-done state for a single day (defaults to today).
   app.get<{ Querystring: { date?: string } }>('/api/day', async (request, reply) => {
     const { date } = request.query;
     if (date && !isValidIsoDate(date)) {
@@ -97,6 +104,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     return { date: effectiveDate, habits: getDayView(data, effectiveDate) };
   });
 
+  // Marks a habit done for a given date.
   app.put<{ Querystring: { habitId?: string; date?: string } }>('/api/entries', async (request, reply) => {
     const { habitId, date } = request.query;
     if (!habitId || !date || !isValidIsoDate(date)) {
@@ -118,6 +126,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     }
   });
 
+  // Marks a habit not-done for a given date.
   app.delete<{ Querystring: { habitId?: string; date?: string } }>('/api/entries', async (request, reply) => {
     const { habitId, date } = request.query;
     if (!habitId || !date || !isValidIsoDate(date)) {
@@ -139,6 +148,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     }
   });
 
+  // Returns the rolling 7-day view (per-habit done days, percent) ending on the given date.
   app.get<{ Querystring: { date?: string } }>('/api/weekly', async (request, reply) => {
     const { date } = request.query;
     if (date && !isValidIsoDate(date)) {
