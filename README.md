@@ -110,6 +110,47 @@ Browser öffnen: `http://localhost:5173`.
 
 Siehe `backend/.env.example` für die vollständige Liste. Empfehlung: die Werte zusätzlich als persistente Umgebungsvariablen setzen (Details im Kommentar der Datei) statt sich nur auf `.env` zu verlassen — eine Datei im Projektordner kann durch `git clean`/`checkout` verloren gehen, Umgebungsvariablen nicht.
 
+## Deployment (Railway)
+
+Der Backend-Service liefert im Produktivbetrieb die gebaute SPA selbst aus (`backend/src/app.ts`, aktiv wenn `NODE_ENV=production`). Deployt wird aus einem eigenen `release`-Branch, der manuell (Fast-Forward/Merge von `main`) aktualisiert wird, sobald ein Stand live gehen soll — kein Auto-Deploy von `main`. Railway deployt automatisch bei jedem Push auf `release`.
+
+### Einmalige Einrichtung (manuell durch den Nutzer)
+
+1. `release`-Branch anlegen und pushen:
+   ```bash
+   git checkout -b release main
+   git push -u origin release
+   ```
+2. In Railway: New Project → Deploy from GitHub repo → dieses Repo auswählen → in den Service-Settings unter "Source" den Branch auf `release` setzen.
+3. In den Railway-Service-Settings → Variables folgende Umgebungsvariablen setzen:
+
+   | Variable | Wert |
+   |---|---|
+   | `NODE_ENV` | `production` |
+   | `AZURE_CLIENT_ID` | aus der Azure App Registration übernehmen |
+   | `AZURE_CLIENT_SECRET` | aus der Azure App Registration übernehmen (ggf. eigenes Secret für Produktion anlegen) |
+   | `AZURE_TENANT` | `common` (übernehmen) |
+   | `AZURE_REDIRECT_URI` | `https://<deine-railway-domain>/api/auth/callback` — Railway-Domain, nicht localhost |
+   | `SESSION_COOKIE_KEY` | frisch generieren: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+   | `OAUTH_TXN_COOKIE_KEY` | frisch generieren (eigener Aufruf, eigener Wert — nicht derselbe wie oben) |
+
+   `FRONTEND_URL`, `GRAPH_BASE_URL`, `MS_IDENTITY_BASE_URL` **nicht setzen** (leer lassen) — das Produktionsverhalten hängt genau davon ab, dass sie fehlen. `PORT` nicht manuell setzen, Railway injiziert es automatisch.
+4. In Azure Portal → App registrations → (bestehende App) → Authentication → Redirect URI (Web): die Railway-URL als **zweite** Redirect-URI ergänzen (`https://<deine-railway-domain>/api/auth/callback`), zusätzlich zur bestehenden `http://localhost:3000/api/auth/callback` — nicht ersetzen.
+5. Deploy auslösen (Push auf `release`, oder "Deploy" in Railway) und Build-/Start-Logs prüfen.
+6. Nach dem Deploy verifizieren:
+   - `https://<deine-railway-domain>/healthz` → `{"status":"ok"}`
+   - `https://<deine-railway-domain>/` → SPA lädt
+   - Login mit echtem Microsoft-Konto funktioniert end-to-end
+   - Ein direkter Aufruf von `/week` oder `/habits` (nicht über Client-Side-Navigation) lädt die SPA statt eines 404
+
+### Spätere Deploys
+
+```bash
+git checkout release
+git merge --ff-only main
+git push
+```
+
 ## Bekannte offene Punkte
 
 - **Cookie-Grösse**: Die Länge des echten Microsoft-Refresh-Tokens muss noch geprüft werden (Backend-Log-Zeile `"Microsoft refresh token length"` beim ersten echten Login), um zu entscheiden, ob das zustandslose Cookie-Design bleibt oder ein Redis-Fallback nötig wird.
