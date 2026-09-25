@@ -40,8 +40,26 @@ async function graphError(action: string, response: Response, accessToken: strin
   };
   return new Error(
     `Graph ${action} failed: ${response.status} ${await response.text()} ` +
-      `| headers=${JSON.stringify(headers)} | token=${describeToken(accessToken)}`
+      `| url=${response.url} | headers=${JSON.stringify(headers)} | token=${describeToken(accessToken)}`
   );
+}
+
+// Diagnostic for a failed load: asks Graph for the drive itself and for the app folder
+// (without the file path) to tell "no drive at all" apart from "only our path fails".
+// Never throws — it only ever adds detail to an error that is already being raised.
+async function probeDrive(accessToken: string): Promise<string> {
+  const results: string[] = [];
+  for (const path of ['/me/drive', '/me/drive/special/approot']) {
+    try {
+      const response = await fetch(`${config.graphBaseUrl}${path}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      results.push(`${path} -> ${response.status} ${(await response.text()).slice(0, 300)}`);
+    } catch (err) {
+      results.push(`${path} -> ${String(err)}`);
+    }
+  }
+  return results.join(' ; ');
 }
 
 export async function loadData(accessToken: string): Promise<LoadedData> {
@@ -56,7 +74,9 @@ export async function loadData(accessToken: string): Promise<LoadedData> {
   }
 
   if (!response.ok) {
-    throw await graphError('load', response, accessToken);
+    const error = await graphError('load', response, accessToken);
+    error.message += ` | probe: ${await probeDrive(accessToken)}`;
+    throw error;
   }
 
   const etag = await getEtag(response);
