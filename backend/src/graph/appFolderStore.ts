@@ -18,6 +18,32 @@ async function getEtag(response: Response): Promise<string> {
   return etag;
 }
 
+// Non-secret claims of the access token, for diagnosing Graph rejections (wrong scope,
+// wrong audience, work/school vs. personal account). Personal Microsoft accounts often
+// get opaque, non-JWT access tokens — then there is nothing to decode. Never returns
+// the token itself or user-identifying claims.
+function describeToken(accessToken: string): string {
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString('utf8'));
+    return JSON.stringify({ scp: payload.scp, aud: payload.aud, tid: payload.tid, ver: payload.ver });
+  } catch {
+    return 'opaque (not a JWT)';
+  }
+}
+
+// Builds the error for a failed Graph call with everything needed to diagnose it from
+// the server log: status, body, Graph's request-id/www-authenticate headers, token claims.
+async function graphError(action: string, response: Response, accessToken: string): Promise<Error> {
+  const headers = {
+    'request-id': response.headers.get('request-id'),
+    'www-authenticate': response.headers.get('www-authenticate'),
+  };
+  return new Error(
+    `Graph ${action} failed: ${response.status} ${await response.text()} ` +
+      `| headers=${JSON.stringify(headers)} | token=${describeToken(accessToken)}`
+  );
+}
+
 export async function loadData(accessToken: string): Promise<LoadedData> {
   const response = await fetch(`${config.graphBaseUrl}${DATA_PATH}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -30,7 +56,7 @@ export async function loadData(accessToken: string): Promise<LoadedData> {
   }
 
   if (!response.ok) {
-    throw new Error(`Graph load failed: ${response.status} ${await response.text()}`);
+    throw await graphError('load', response, accessToken);
   }
 
   const etag = await getEtag(response);
@@ -57,7 +83,7 @@ export async function saveData(accessToken: string, data: DataFile, ifMatchEtag?
     throw new PreconditionFailedError('ETag mismatch — data was changed elsewhere');
   }
   if (!response.ok) {
-    throw new Error(`Graph save failed: ${response.status} ${await response.text()}`);
+    throw await graphError('save', response, accessToken);
   }
 
   // PUT .../content responds with the updated DriveItem as JSON (unlike GET
