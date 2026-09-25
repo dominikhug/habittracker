@@ -23,6 +23,8 @@ Für Frontend-E2E-Checks: echter Vite-Dev-Server (Port 5173) + echtes Backend (P
 ## Bekannte reale Abweichungen von Microsoft Graph (vs. eigene Mock-Annahmen)
 
 - `PUT .../content` liefert den neuen ETag nicht zuverlässig als HTTP-Header, sondern im JSON-Response-Body (`eTag`/`cTag`-Feld des zurückgegebenen DriveItem). Siehe `backend/src/graph/appFolderStore.ts::saveData` — Header zuerst versuchen, Body als Fallback.
+- `GET /me/drive/special/approot:/data.json:/content` (Pfad + `:/content` kombiniert) lieferte in Produktion (2026-09-25, persönliches Konto) `400 invalidRequest`, obwohl Drive, Ordner und Datei existierten und Metadaten (`approot:/data.json`) sowie `/me/drive/items/{id}/content` (302 auf Download-URL) funktionierten. Deshalb lädt `loadData` in zwei Schritten: Metadaten per Pfad → Content per Item-ID. `saveData` (PUT auf den kombinierten Pfad) ist davon nicht betroffen. Die Mocks bilden das 400 nicht ab.
+- Graph-Antwortbodies nie roh loggen: Metadaten enthalten `@microsoft.graph.downloadUrl` mit temporärem `tempauth`-Token, und `response.url` nach einem Redirect ist genau diese URL. `graphError` loggt die URL deshalb ohne Query-String.
 - Falls weitere Abweichungen auftauchen: hier ergänzen, damit sie nicht zweimal gefunden werden müssen.
 
 ## Konventionen

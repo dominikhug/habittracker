@@ -1,21 +1,14 @@
 import { config } from '../config.js';
 import { emptyDataFile, type DataFile } from '../habits/types.js';
 
-const DATA_PATH = '/me/drive/special/approot:/data.json:/content';
+const ITEM_PATH = '/me/drive/special/approot:/data.json';
+const DATA_PATH = `${ITEM_PATH}:/content`;
 
 export class PreconditionFailedError extends Error {}
 
 interface LoadedData {
   data: DataFile;
   etag: string;
-}
-
-async function getEtag(response: Response): Promise<string> {
-  const etag = response.headers.get('etag');
-  if (!etag) {
-    throw new Error('Graph response did not include an ETag header');
-  }
-  return etag;
 }
 
 // Non-secret claims of the access token, for diagnosing Graph rejections (wrong scope,
@@ -33,72 +26,50 @@ function describeToken(accessToken: string): string {
 
 // Builds the error for a failed Graph call with everything needed to diagnose it from
 // the server log: status, body, Graph's request-id/www-authenticate headers, token claims.
+// The URL is logged without its query string: after a redirect it is a pre-authenticated
+// download URL whose query carries a temporary access token.
 async function graphError(action: string, response: Response, accessToken: string): Promise<Error> {
+  const url = new URL(response.url);
   const headers = {
     'request-id': response.headers.get('request-id'),
     'www-authenticate': response.headers.get('www-authenticate'),
   };
   return new Error(
     `Graph ${action} failed: ${response.status} ${await response.text()} ` +
-      `| url=${response.url} | headers=${JSON.stringify(headers)} | token=${describeToken(accessToken)}`
+      `| url=${url.origin}${url.pathname} | headers=${JSON.stringify(headers)} | token=${describeToken(accessToken)}`
   );
 }
 
-// Diagnostic for a failed load: drive, app folder and the file are known to exist, so
-// compare ways of addressing the file — metadata by path, content by item id, content by
-// path without following redirects (Graph normally answers /content with a 302 to a
-// pre-authenticated download URL, so only its host is logged, never the URL itself).
-// Never throws — it only ever adds detail to an error that is already being raised.
-async function probeDrive(accessToken: string): Promise<string> {
-  const results: string[] = [];
-  const probe = async (path: string, redirect: RequestRedirect): Promise<string | undefined> => {
-    try {
-      const response = await fetch(`${config.graphBaseUrl}${path}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        redirect,
-      });
-      const location = response.headers.get('location');
-      const text = location ? '' : await response.text();
-      const detail = location ? `redirect to ${new URL(location).host}` : text.slice(0, 1500);
-      results.push(`${path} -> ${response.status} ${detail}`);
-      return response.ok ? text : undefined;
-    } catch (err) {
-      results.push(`${path} -> ${String(err)}`);
-    }
-  };
-
-  const metadata = await probe('/me/drive/special/approot:/data.json', 'follow');
-  let itemId: string | undefined;
-  try {
-    itemId = metadata ? (JSON.parse(metadata) as { id?: string }).id : undefined;
-  } catch {
-    // Metadata was not JSON — skip the by-id probe.
-  }
-  if (itemId) {
-    await probe(`/me/drive/items/${itemId}/content`, 'manual');
-  }
-  await probe(DATA_PATH, 'manual');
-  return results.join(' ; ');
-}
-
+// Two requests instead of GET .../approot:/data.json:/content: real Graph answers that
+// combined path-plus-/content form with 400 "invalidRequest" for personal accounts (seen
+// in production on 2026-09-25, while the same file is fine via metadata and item id).
 export async function loadData(accessToken: string): Promise<LoadedData> {
-  const response = await fetch(`${config.graphBaseUrl}${DATA_PATH}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const headers = { Authorization: `Bearer ${accessToken}` };
 
-  if (response.status === 404) {
+  const metaResponse = await fetch(`${config.graphBaseUrl}${ITEM_PATH}`, { headers });
+
+  if (metaResponse.status === 404) {
     // First login: the app folder itself is auto-created by Graph on first access,
     // but our data file inside it isn't there yet — create it now.
     return saveData(accessToken, emptyDataFile());
   }
+  if (!metaResponse.ok) {
+    throw await graphError('load', metaResponse, accessToken);
+  }
+  const { id, eTag } = (await metaResponse.json()) as { id: string; eTag?: string };
 
+  // Graph answers with a 302 to a pre-authenticated download URL, which fetch follows.
+  const response = await fetch(`${config.graphBaseUrl}/me/drive/items/${id}/content`, { headers });
   if (!response.ok) {
-    const error = await graphError('load', response, accessToken);
-    error.message += ` | probe: ${await probeDrive(accessToken)}`;
-    throw error;
+    throw await graphError('load', response, accessToken);
   }
 
-  const etag = await getEtag(response);
+  // Prefer the download response's ETag header (what this code always used); the item's
+  // own eTag from the metadata call is the fallback.
+  const etag = response.headers.get('etag') ?? eTag;
+  if (!etag) {
+    throw new Error('Graph response did not include an ETag (neither header nor item eTag)');
+  }
   const data = (await response.json()) as DataFile;
   return { data, etag };
 }
