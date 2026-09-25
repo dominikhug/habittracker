@@ -44,21 +44,40 @@ async function graphError(action: string, response: Response, accessToken: strin
   );
 }
 
-// Diagnostic for a failed load: asks Graph for the drive itself and for the app folder
-// (without the file path) to tell "no drive at all" apart from "only our path fails".
+// Diagnostic for a failed load: drive, app folder and the file are known to exist, so
+// compare ways of addressing the file — metadata by path, content by item id, content by
+// path without following redirects (Graph normally answers /content with a 302 to a
+// pre-authenticated download URL, so only its host is logged, never the URL itself).
 // Never throws — it only ever adds detail to an error that is already being raised.
 async function probeDrive(accessToken: string): Promise<string> {
   const results: string[] = [];
-  for (const path of ['/me/drive', '/me/drive/special/approot']) {
+  const probe = async (path: string, redirect: RequestRedirect): Promise<string | undefined> => {
     try {
       const response = await fetch(`${config.graphBaseUrl}${path}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
+        redirect,
       });
-      results.push(`${path} -> ${response.status} ${(await response.text()).slice(0, 300)}`);
+      const location = response.headers.get('location');
+      const text = location ? '' : await response.text();
+      const detail = location ? `redirect to ${new URL(location).host}` : text.slice(0, 1500);
+      results.push(`${path} -> ${response.status} ${detail}`);
+      return response.ok ? text : undefined;
     } catch (err) {
       results.push(`${path} -> ${String(err)}`);
     }
+  };
+
+  const metadata = await probe('/me/drive/special/approot:/data.json', 'follow');
+  let itemId: string | undefined;
+  try {
+    itemId = metadata ? (JSON.parse(metadata) as { id?: string }).id : undefined;
+  } catch {
+    // Metadata was not JSON — skip the by-id probe.
   }
+  if (itemId) {
+    await probe(`/me/drive/items/${itemId}/content`, 'manual');
+  }
+  await probe(DATA_PATH, 'manual');
   return results.join(' ; ');
 }
 
