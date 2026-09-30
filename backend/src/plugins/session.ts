@@ -10,6 +10,10 @@ export async function registerSession(app: FastifyInstance) {
       sessionName: 'session',
       cookieName: 'session',
       key: Buffer.from(config.sessionCookieKey, 'hex'),
+      // Idle timeout, checked against a timestamp inside the cookie (the library default
+      // is 24h). requireAuth renews that timestamp on every API request, so a session only
+      // expires after 90 days WITHOUT use — same as the cookie's maxAge below.
+      expiry: 60 * 60 * 24 * 90,
       cookie: {
         httpOnly: true,
         secure: config.isProd,
