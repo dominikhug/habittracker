@@ -6,6 +6,8 @@ Arbeits-Kontext für Claude-Code-Sessions, die an diesem Repo weiterarbeiten. F�
 
 M0–M6 sind fertig, committet und getestet (Milestone-Tabelle: `README.md`). **Nächster Schritt: M7 (Railway-Deployment)** — der Nutzer übernimmt das laut Absprache selbst, kann bei Bedarf aber unterstützt werden.
 
+Branch `volume` (noch nicht in `main`): ersetzt die OneDrive-Speicherung durch eine JSON-Datei pro Nutzer auf einem Railway-Volume (`backend/src/store/fileStore.ts`, `DATA_DIR`); Microsoft nur noch für den Login. Grund: Graph-Probleme (400 auf kombiniertem Pfad, unsichere ETag-Quelle), 409 bei schnellen parallelen Toggles, Latenz. Die App soll öffentlich laufen — offen sind deshalb noch Konto-/Datenlöschung, Datenexport und Datenschutzerklärung (nDSG/DSGVO).
+
 ## Ohne echtes Microsoft-Konto testen
 
 In der Entwicklungsumgebung ist kein echtes Azure/Microsoft-Konto verfügbar. Microsoft wird nur noch für den Login gebraucht; die Daten liegen als `<uid>.json` in `DATA_DIR` (`backend/src/store/fileStore.ts`). Bewährtes Muster:
