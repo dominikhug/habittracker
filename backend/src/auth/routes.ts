@@ -31,17 +31,12 @@ export async function authRoutes(app: FastifyInstance) {
       }
 
       const tokens = await exchangeCodeForTokens(code, codeVerifier);
-      if (!tokens.refresh_token) {
-        request.log.error('Microsoft token response contained no refresh_token (offline_access not granted?)');
-        return reply.code(500).send({ error: 'no_refresh_token' });
-      }
-      const { oid, name } = decodeIdToken(tokens.id_token);
+      const { tid, oid, name } = decodeIdToken(tokens.id_token);
 
-      request.log.info({ refreshTokenLength: tokens.refresh_token.length }, 'Microsoft refresh token length');
-
-      request.session.set('uid', oid);
+      // tid + oid together is Microsoft's recommended unique user key across tenants.
+      // It also names the user's data file (see store/fileStore.ts).
+      request.session.set('uid', `${tid}.${oid}`);
       request.session.set('name', name);
-      request.session.set('rt', tokens.refresh_token);
       request.oauthTxn.delete();
 
       return reply.redirect(config.frontendUrl ? `${config.frontendUrl}/` : '/');

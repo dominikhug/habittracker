@@ -24,7 +24,7 @@ function login() {
       </svg>
       Mit Microsoft anmelden
     </button>
-    <p class="privacy">Deine Daten bleiben in deinem eigenen OneDrive</p>
+    <p class="privacy">Deine Daten werden verschlüsselt übertragen und nur für dich gespeichert</p>
   </div>
 </template>
 

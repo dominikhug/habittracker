@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../auth/requireAuth.js';
-import { loadData, PreconditionFailedError, withData } from '../graph/appFolderStore.js';
+import { loadData, withData } from '../store/fileStore.js';
 import { isTooFarInFuture, isValidIsoDate, todayIso } from '../util/dates.js';
 import { NotFoundError, ValidationError } from './errors.js';
 import { addHabit, computeWeek, deleteHabit, getDayView, setEntryDone, updateHabit } from './model.js';
@@ -12,20 +12,17 @@ function mapWriteError(err: unknown): { status: number; body: { error: string } 
   if (err instanceof NotFoundError) {
     return { status: 404, body: { error: err.message } };
   }
-  if (err instanceof PreconditionFailedError) {
-    return { status: 409, body: { error: 'conflict: data changed concurrently, please retry' } };
-  }
   return null;
 }
 
 // Registers all habit/entry CRUD endpoints. Every route requires an authenticated session
-// (see requireAuth) and reads/writes the user's OneDrive-backed data file.
+// (see requireAuth) and reads/writes the user's data file (see store/fileStore.ts).
 export async function habitsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
 
   // Lists all habits for the current user.
   app.get('/api/habits', async (request) => {
-    const { data } = await loadData(request.graphAccessToken);
+    const data = await loadData(request.uid);
     return data.habits;
   });
 
@@ -44,7 +41,7 @@ export async function habitsRoutes(app: FastifyInstance) {
       const effectiveCreatedAt =
         createdAt && isValidIsoDate(createdAt) && !isTooFarInFuture(createdAt) ? createdAt : todayIso();
       try {
-        const habit = await withData(request.graphAccessToken, (data) => {
+        const habit = await withData(request.uid, (data) => {
           const result = addHabit(data, name, colorId, effectiveCreatedAt);
           return { data: result.data, result: result.habit };
         });
@@ -62,7 +59,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     '/api/habits/:id',
     async (request, reply) => {
       try {
-        const habit = await withData(request.graphAccessToken, (data) => {
+        const habit = await withData(request.uid, (data) => {
           const result = updateHabit(data, request.params.id, request.body ?? {});
           return { data: result.data, result: result.habit };
         });
@@ -78,7 +75,7 @@ export async function habitsRoutes(app: FastifyInstance) {
   // Deletes a habit and all of its entries.
   app.delete<{ Params: { id: string } }>('/api/habits/:id', async (request, reply) => {
     try {
-      await withData(request.graphAccessToken, (data) => {
+      await withData(request.uid, (data) => {
         const result = deleteHabit(data, request.params.id);
         return { data: result.data, result: undefined };
       });
@@ -100,7 +97,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     if (isTooFarInFuture(effectiveDate)) {
       return reply.code(400).send({ error: 'date must not be in the future' });
     }
-    const { data } = await loadData(request.graphAccessToken);
+    const data = await loadData(request.uid);
     return { date: effectiveDate, habits: getDayView(data, effectiveDate) };
   });
 
@@ -114,7 +111,7 @@ export async function habitsRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'date must not be in the future' });
     }
     try {
-      await withData(request.graphAccessToken, (data) => {
+      await withData(request.uid, (data) => {
         const result = setEntryDone(data, habitId, date, true);
         return { data: result.data, result: undefined };
       });
@@ -136,7 +133,7 @@ export async function habitsRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'date must not be in the future' });
     }
     try {
-      await withData(request.graphAccessToken, (data) => {
+      await withData(request.uid, (data) => {
         const result = setEntryDone(data, habitId, date, false);
         return { data: result.data, result: undefined };
       });
@@ -158,7 +155,7 @@ export async function habitsRoutes(app: FastifyInstance) {
     if (isTooFarInFuture(effectiveDate)) {
       return reply.code(400).send({ error: 'date must not be in the future' });
     }
-    const { data } = await loadData(request.graphAccessToken);
+    const data = await loadData(request.uid);
     return computeWeek(data, effectiveDate);
   });
 }
