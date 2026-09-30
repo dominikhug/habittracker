@@ -15,7 +15,7 @@ Eine bewusst einfache App zum Tracken von Gewohnheiten für mentale Gesundheit. 
 | M6 – Politur | ✅ |
 | M7 – Railway-Deployment | ⏳ offen |
 
-M1–M6 wurden während der Entwicklung gegen Mock-Microsoft/Graph-Server getestet (kein echtes Microsoft-Konto in der Entwicklungsumgebung verfügbar) und werden aktuell lokal mit einem echten Konto verifiziert. Details zu bereits gefundenen und behobenen Abweichungen zwischen echtem Microsoft Graph und den Mocks: siehe [Bekannte offene Punkte](#bekannte-offene-punkte).
+M1–M6 wurden während der Entwicklung gegen Mock-Microsoft/Graph-Server getestet (kein echtes Microsoft-Konto in der Entwicklungsumgebung verfügbar). Die OneDrive-Speicherung aus M2 wurde inzwischen durch eine Datei pro Nutzer auf einem Railway-Volume ersetzt (schneller, keine Graph-Abweichungen mehr).
 
 ## Design-Prinzipien
 
@@ -41,29 +41,28 @@ Browser (Vue 3 SPA)
 Fastify-Backend (ein Prozess: API, später auch die gebaute SPA)
    │  OAuth2 Authorization Code + PKCE, server-seitig (kein MSAL, kein Client-Token)
    ▼
-Microsoft identity platform (login.microsoftonline.com/common)
-   │  Graph-Access-Token (aus Refresh-Token gemintet, pro Request rotiert)
-   ▼
-Microsoft Graph API → OneDrive-App-Ordner des jeweiligen Nutzers
-   → eine data.json pro Nutzer: { habits: [...], entries: [...] }
+Microsoft identity platform (login.microsoftonline.com/common) — nur Login (id_token)
+
+Fastify-Backend → Railway-Volume (DATA_DIR)
+   → eine <tid>.<oid>.json pro Nutzer: { habits: [...], entries: [...] }
 ```
 
-Kein eigenes Datenbanksystem — jeder Nutzer speichert seine Daten in seinem eigenen OneDrive (`Files.ReadWrite.AppFolder`-Scope, sieht nur den eigenen App-Ordner). Sessions sind zustandslos: ein verschlüsselter, signierter Cookie (`@fastify/secure-session`) statt eines Server-seitigen Session-Stores — passt zu zustandslosen Deployment-Umgebungen wie Railway.
+Kein eigenes Datenbanksystem — jeder Nutzer hat eine JSON-Datei auf dem Railway-Volume (`backend/src/store/fileStore.ts`). Schreibzugriffe pro Nutzer laufen nacheinander (In-Process-Lock) und atomar (Temp-Datei + Rename). Microsoft wird nur für den Login verwendet, nicht für die Datenspeicherung. Sessions sind zustandslos: ein verschlüsselter, signierter Cookie (`@fastify/secure-session`) statt eines Server-seitigen Session-Stores — passt zu zustandslosen Deployment-Umgebungen wie Railway.
 
 ## Tech-Stack
 
 - **Backend**: Fastify + TypeScript
 - **Frontend**: Vue 3 + TypeScript, Vite, vue-router
 - **Auth**: Microsoft OAuth2 (Authorization Code + PKCE), private und Arbeits-/Schulkonten
-- **Datenspeicherung**: Microsoft Graph API, OneDrive-App-Ordner
+- **Datenspeicherung**: JSON-Datei pro Nutzer auf einem Railway-Volume
 - **Deployment (geplant, M7)**: Railway.com, ein einzelner Service (Backend liefert die gebaute SPA selbst aus)
 
 ## Projektstruktur
 
 ```
 backend/src/
-  auth/         OAuth-Flow (oauth.ts, routes.ts), Session-Zugriff (graphToken.ts, requireAuth.ts)
-  graph/        OneDrive-Zugriff (appFolderStore.ts: load/save mit ETag-Concurrency)
+  auth/         OAuth-Flow (oauth.ts, routes.ts), Session-Prüfung (requireAuth.ts)
+  store/        Datei-Speicherung pro Nutzer (fileStore.ts: load/save mit Lock pro Nutzer)
   habits/       Habits-CRUD sowie Tages-/Wochen-Logik als reine Funktionen (model.ts), Routen (routes.ts)
   plugins/      Fastify-Plugins (session.ts)
   util/         Datums-Hilfsfunktionen (dates.ts)
@@ -104,7 +103,7 @@ Browser öffnen: `http://localhost:5173`.
 2. **Supported account types**: "Accounts in any organizational directory and personal Microsoft accounts" (wichtig — sonst schlägt der Login mit `unauthorized_client` fehl).
 3. **Redirect URI**, Plattform **Web**: `http://localhost:3000/api/auth/callback`.
 4. **Certificates & secrets** → neues Client Secret erzeugen (Wert sofort sichern, wird nur einmal angezeigt).
-5. **API permissions** → Microsoft Graph → Delegated permissions: `Files.ReadWrite.AppFolder`, `offline_access`, `openid`, `profile`.
+5. **API permissions** → Microsoft Graph → Delegated permissions: `openid`, `profile`. (`Files.ReadWrite.AppFolder` und `offline_access` werden nicht mehr gebraucht und können entfernt werden.)
 
 ### Umgebungsvariablen
 
@@ -133,8 +132,14 @@ Der Backend-Service liefert im Produktivbetrieb die gebaute SPA selbst aus (`bac
    | `AZURE_REDIRECT_URI` | `https://<deine-railway-domain>/api/auth/callback` — Railway-Domain, nicht localhost |
    | `SESSION_COOKIE_KEY` | frisch generieren: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `OAUTH_TXN_COOKIE_KEY` | frisch generieren (eigener Aufruf, eigener Wert — nicht derselbe wie oben) |
+   | `DATA_DIR` | `/data` (Mount-Pfad des Volumes, siehe nächster Schritt) |
 
-   `FRONTEND_URL`, `GRAPH_BASE_URL`, `MS_IDENTITY_BASE_URL` **nicht setzen** (leer lassen) — das Produktionsverhalten hängt genau davon ab, dass sie fehlen. `PORT` nicht manuell setzen, Railway injiziert es automatisch.
+   `FRONTEND_URL`, `MS_IDENTITY_BASE_URL` **nicht setzen** (leer lassen) — das Produktionsverhalten hängt genau davon ab, dass sie fehlen. `PORT` nicht manuell setzen, Railway injiziert es automatisch.
+   Ausserdem in den Service-Settings:
+   - **Volume** anlegen und an den Service hängen, Mount-Pfad `/data`. Ohne Volume gehen bei jedem Deploy alle Daten verloren.
+   - **Volume-Backups** in den Volume-Settings aktivieren (Verfügbarkeit je nach Railway-Plan prüfen).
+   - **App Sleeping** ausgeschaltet lassen und eine **EU-Region** wählen — sonst wird die App langsam.
+   - Hinweis: Ein Service mit Volume läuft als einzelne Instanz und hat bei jedem Deploy wenige Sekunden Downtime.
 4. In Azure Portal → App registrations → (bestehende App) → Authentication → Redirect URI (Web): die Railway-URL als **zweite** Redirect-URI ergänzen (`https://<deine-railway-domain>/api/auth/callback`), zusätzlich zur bestehenden `http://localhost:3000/api/auth/callback` — nicht ersetzen.
 5. Deploy auslösen (Push auf `release`, oder "Deploy" in Railway) und Build-/Start-Logs prüfen.
 6. Nach dem Deploy verifizieren:
@@ -153,6 +158,5 @@ git push
 
 ## Bekannte offene Punkte
 
-- **Cookie-Grösse**: Die Länge des echten Microsoft-Refresh-Tokens muss noch geprüft werden (Backend-Log-Zeile `"Microsoft refresh token length"` beim ersten echten Login), um zu entscheiden, ob das zustandslose Cookie-Design bleibt oder ein Redis-Fallback nötig wird.
+- **Datenschutz**: Die App speichert Gesundheitsdaten aller Nutzer selbst. Für einen öffentlichen Betrieb fehlen noch Konto-/Datenlöschung, Datenexport und eine Datenschutzerklärung (nDSG/DSGVO).
 - **M7 (Railway-Deployment)**: noch nicht umgesetzt.
-- Reale Abweichungen zwischen Microsoft Graph und den in der Entwicklung genutzten Mock-Servern wurden bereits gefunden und behoben, z.B.: `PUT .../content` liefert den ETag nicht zuverlässig als HTTP-Header, sondern im JSON-Response-Body (`appFolderStore.ts`).
